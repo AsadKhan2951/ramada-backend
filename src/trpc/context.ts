@@ -1,6 +1,6 @@
 import { inferAsyncReturnType } from "@trpc/server";
 import { CreateExpressContextOptions } from "@trpc/server/adapters/express";
-import { verifyToken, JWTPayload } from "../auth/jwt";
+import { verifyToken, JWTPayload } from "../auth/jwt.js";
 
 export interface Context {
   user: JWTPayload | null;

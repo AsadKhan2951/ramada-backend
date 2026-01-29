@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { nanoid } from "nanoid";
-import { router, publicProcedure, protectedProcedure, adminProcedure } from "./trpc";
-import { generateToken, comparePassword } from "../auth/jwt";
+import { router, publicProcedure, protectedProcedure, adminProcedure } from "./trpc.js";
+import { generateToken, comparePassword } from "../auth/jwt.js";
 import {
   StaffMember,
   BanquetHall,
@@ -21,7 +21,7 @@ import {
   BookingVenue,
   BookingCustomMenu,
   PaymentReminder,
-} from "../db/models";
+} from "../db/models.js";
 
 export const appRouter = router({
   // ==================== Auth ====================

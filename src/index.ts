@@ -3,9 +3,9 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { connectDB } from "./db/connection";
-import { appRouter } from "./trpc/routers";
-import { createContext } from "./trpc/context";
+import { connectDB } from "./db/connection.js";
+import { appRouter } from "./trpc/routers.js";
+import { createContext } from "./trpc/context.js";
 
 // Load environment variables
 dotenv.config();

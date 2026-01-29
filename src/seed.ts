@@ -1,12 +1,12 @@
 import dotenv from "dotenv";
-import { connectDB, disconnectDB } from "./db/connection";
-import { hashPassword } from "./auth/jwt";
+import { connectDB, disconnectDB } from "./db/connection.js";
+import { hashPassword } from "./auth/jwt.js";
 import {
   StaffMember,
   BanquetHall,
   FoodMenu,
   AdditionalService,
-} from "./db/models";
+} from "./db/models.js";
 
 dotenv.config();
 
