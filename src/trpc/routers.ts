@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { z } from 'zod';
 import { TRPCError } from '@trpc/server';
 import { router, publicProcedure, protectedProcedure } from './trpc';
@@ -37,11 +38,15 @@ export const appRouter = router({
 
     login: publicProcedure
       .input(z.object({
-        email: z.string().email(),
+        staffId: z.string(),
         password: z.string(),
       }))
       .mutation(async ({ input, ctx }) => {
-        const staff = await StaffMember.findOne({ email: input.email, isActive: true });
+        if (!mongoose.Types.ObjectId.isValid(input.staffId)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid staff ID' });
+        }
+
+        const staff = await StaffMember.findOne({ _id: input.staffId, isActive: true });
         if (!staff) {
           throw new TRPCError({ code: 'NOT_FOUND', message: 'Staff member not found' });
         }
@@ -73,7 +78,7 @@ export const appRouter = router({
 
         return {
           success: true,
-          user: {
+          staff: {
             id: staff._id.toString(),
             name: staff.name,
             email: staff.email,
