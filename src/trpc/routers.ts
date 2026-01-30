@@ -1,156 +1,106 @@
-import { z } from "zod";
-import { TRPCError } from "@trpc/server";
-import { nanoid } from "nanoid";
-import { router, publicProcedure, protectedProcedure, adminProcedure } from "./trpc.js";
-import { generateToken, comparePassword } from "../auth/jwt.js";
-import {
-  StaffMember,
-  BanquetHall,
-  FoodMenu,
-  AdditionalService,
-  Booking,
-  Payment,
-  BookingMenu,
-  BookingService,
-  CustomFoodItem,
-  CustomService,
-  BookingComment,
-  BookingActivityLog,
-  DateNote,
-  Notification,
-  BookingVenue,
-  BookingCustomMenu,
-  PaymentReminder,
-} from "../db/models.js";
+import { z } from 'zod';
+import { TRPCError } from '@trpc/server';
+import { router, publicProcedure, protectedProcedure } from './trpc';
+import { StaffMember, BanquetHall, FoodMenu, AdditionalService, Booking, Payment, BookingMenu, BookingService, BookingComment, BookingActivityLog, DateNote, Notification, BookingVenue, CustomService, CustomFoodItem, BookingCustomMenu } from '../db/models';
+import { generateToken, comparePassword, hashPassword } from '../auth/jwt';
+
+function generateBookingNumber(): string {
+  const prefix = 'BK';
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${prefix}-${timestamp}${random}`;
+}
 
 export const appRouter = router({
-  // ==================== Auth ====================
+  // Auth routes
   auth: router({
     me: publicProcedure.query(({ ctx }) => ctx.user),
     
     logout: publicProcedure.mutation(({ ctx }) => {
-      ctx.res.clearCookie("token", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-      });
+      ctx.res.clearCookie('token');
       return { success: true };
     }),
   }),
 
-  // ==================== Staff ====================
+  // Staff authentication
   staff: router({
-    login: publicProcedure
-      .input(z.object({
-        staffId: z.string(),
-        password: z.string(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        const staff = await StaffMember.findById(input.staffId);
-        
-        if (!staff) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: "Invalid credentials",
-          });
-        }
-        
-        if (!staff.isActive) {
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Your account has been deactivated",
-          });
-        }
-        
-        // Check password - compare with hashed password
-        const validPassword = await comparePassword(input.password, staff.password);
-        
-        if (!validPassword) {
-          throw new TRPCError({
-            code: "UNAUTHORIZED",
-            message: "Invalid password",
-          });
-        }
-        
-        // Update last signed in
-        staff.lastSignedIn = new Date();
-        await staff.save();
-        
-        // Generate JWT token
-        const token = generateToken({
-          staffId: staff._id.toString(),
-          email: staff.email,
-          name: staff.name,
-          department: staff.department,
-          accessLevel: staff.accessLevel,
-          jobTitle: staff.jobTitle,
-        });
-        
-        // Set cookie
-        ctx.res.cookie("token", token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        });
-        
-        return {
-          token,
-          staff: {
-            id: staff._id.toString(),
-            name: staff.name,
-            email: staff.email,
-            jobTitle: staff.jobTitle,
-            department: staff.department,
-            accessLevel: staff.accessLevel,
-          },
-        };
-      }),
-    
     list: publicProcedure.query(async () => {
-      const staff = await StaffMember.find({ isActive: true }).select("-password").sort({ name: 1 });
+      const staff = await StaffMember.find({ isActive: true }).select('name email jobTitle department');
       return staff.map(s => ({
         id: s._id.toString(),
         name: s.name,
         email: s.email,
         jobTitle: s.jobTitle,
         department: s.department,
-        accessLevel: s.accessLevel,
       }));
     }),
-    
-    getById: protectedProcedure
-      .input(z.object({ id: z.string() }))
-      .query(async ({ input }) => {
-        const staff = await StaffMember.findById(input.id).select("-password");
-        if (!staff) return null;
-        return {
+
+    login: publicProcedure
+      .input(z.object({
+        email: z.string().email(),
+        password: z.string(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const staff = await StaffMember.findOne({ email: input.email, isActive: true });
+        if (!staff) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Staff member not found' });
+        }
+
+        const isValid = await comparePassword(input.password, staff.password);
+        if (!isValid) {
+          throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid password' });
+        }
+
+        // Update last signed in
+        staff.lastSignedIn = new Date();
+        await staff.save();
+
+        const token = generateToken({
           id: staff._id.toString(),
-          name: staff.name,
           email: staff.email,
-          jobTitle: staff.jobTitle,
+          name: staff.name,
           department: staff.department,
           accessLevel: staff.accessLevel,
-          isActive: staff.isActive,
-          lastSignedIn: staff.lastSignedIn,
+          jobTitle: staff.jobTitle,
+        });
+
+        ctx.res.cookie('token', token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+
+        return {
+          success: true,
+          user: {
+            id: staff._id.toString(),
+            name: staff.name,
+            email: staff.email,
+            department: staff.department,
+            accessLevel: staff.accessLevel,
+            jobTitle: staff.jobTitle,
+          },
         };
       }),
   }),
 
-  // ==================== Banquet Halls ====================
+  // Banquet Halls
   banquetHalls: router({
     list: protectedProcedure.query(async () => {
-      const halls = await BanquetHall.find({ isActive: true }).sort({ name: 1 });
+      const halls = await BanquetHall.find({ isActive: true });
       return halls.map(h => ({
         id: h._id.toString(),
         name: h.name,
         capacity: h.capacity,
         facilities: h.facilities,
-        baseRate: h.baseRate,
+        baseRate: h.baseRate?.toString(),
         isActive: h.isActive,
+        createdAt: h.createdAt,
+        updatedAt: h.updatedAt,
       }));
     }),
-    
+
     getById: protectedProcedure
       .input(z.object({ id: z.string() }))
       .query(async ({ input }) => {
@@ -161,12 +111,14 @@ export const appRouter = router({
           name: hall.name,
           capacity: hall.capacity,
           facilities: hall.facilities,
-          baseRate: hall.baseRate,
+          baseRate: hall.baseRate?.toString(),
           isActive: hall.isActive,
+          createdAt: hall.createdAt,
+          updatedAt: hall.updatedAt,
         };
       }),
-    
-    create: adminProcedure
+
+    create: protectedProcedure
       .input(z.object({
         name: z.string(),
         capacity: z.number(),
@@ -174,11 +126,14 @@ export const appRouter = router({
         baseRate: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        const hall = await BanquetHall.create(input);
+        const hall = await BanquetHall.create({
+          ...input,
+          baseRate: input.baseRate ? parseFloat(input.baseRate) : undefined,
+        });
         return { id: hall._id.toString() };
       }),
-    
-    update: adminProcedure
+
+    update: protectedProcedure
       .input(z.object({
         id: z.string(),
         name: z.string().optional(),
@@ -189,25 +144,30 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        await BanquetHall.findByIdAndUpdate(id, data);
+        await BanquetHall.findByIdAndUpdate(id, {
+          ...data,
+          baseRate: data.baseRate ? parseFloat(data.baseRate) : undefined,
+        });
         return { success: true };
       }),
   }),
 
-  // ==================== Food Menus ====================
+  // Food Menus
   foodMenus: router({
     list: protectedProcedure.query(async () => {
-      const menus = await FoodMenu.find({ isActive: true }).sort({ name: 1 });
+      const menus = await FoodMenu.find({ isActive: true });
       return menus.map(m => ({
         id: m._id.toString(),
         name: m.name,
         description: m.description,
-        pricePerPerson: m.pricePerPerson,
+        pricePerPerson: m.pricePerPerson.toString(),
         menuItems: m.menuItems,
         isActive: m.isActive,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
       }));
     }),
-    
+
     getById: protectedProcedure
       .input(z.object({ id: z.string() }))
       .query(async ({ input }) => {
@@ -217,13 +177,15 @@ export const appRouter = router({
           id: menu._id.toString(),
           name: menu.name,
           description: menu.description,
-          pricePerPerson: menu.pricePerPerson,
+          pricePerPerson: menu.pricePerPerson.toString(),
           menuItems: menu.menuItems,
           isActive: menu.isActive,
+          createdAt: menu.createdAt,
+          updatedAt: menu.updatedAt,
         };
       }),
-    
-    create: adminProcedure
+
+    create: protectedProcedure
       .input(z.object({
         name: z.string(),
         description: z.string().optional(),
@@ -231,11 +193,14 @@ export const appRouter = router({
         menuItems: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        const menu = await FoodMenu.create(input);
+        const menu = await FoodMenu.create({
+          ...input,
+          pricePerPerson: parseFloat(input.pricePerPerson),
+        });
         return { id: menu._id.toString() };
       }),
-    
-    update: adminProcedure
+
+    update: protectedProcedure
       .input(z.object({
         id: z.string(),
         name: z.string().optional(),
@@ -246,25 +211,30 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        await FoodMenu.findByIdAndUpdate(id, data);
+        await FoodMenu.findByIdAndUpdate(id, {
+          ...data,
+          pricePerPerson: data.pricePerPerson ? parseFloat(data.pricePerPerson) : undefined,
+        });
         return { success: true };
       }),
   }),
 
-  // ==================== Additional Services ====================
+  // Additional Services
   additionalServices: router({
     list: protectedProcedure.query(async () => {
-      const services = await AdditionalService.find({ isActive: true }).sort({ name: 1 });
+      const services = await AdditionalService.find({ isActive: true });
       return services.map(s => ({
         id: s._id.toString(),
         name: s.name,
         description: s.description,
-        price: s.price,
+        price: s.price.toString(),
         category: s.category,
         isActive: s.isActive,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
       }));
     }),
-    
+
     getById: protectedProcedure
       .input(z.object({ id: z.string() }))
       .query(async ({ input }) => {
@@ -274,52 +244,63 @@ export const appRouter = router({
           id: service._id.toString(),
           name: service.name,
           description: service.description,
-          price: service.price,
+          price: service.price.toString(),
           category: service.category,
           isActive: service.isActive,
+          createdAt: service.createdAt,
+          updatedAt: service.updatedAt,
         };
       }),
-    
-    create: adminProcedure
+
+    create: protectedProcedure
       .input(z.object({
         name: z.string(),
         description: z.string().optional(),
         price: z.string(),
-        category: z.enum(["sound", "effects", "decoration", "other"]),
+        category: z.enum(['sound', 'effects', 'decoration', 'other']),
       }))
       .mutation(async ({ input }) => {
-        const service = await AdditionalService.create(input);
+        const service = await AdditionalService.create({
+          ...input,
+          price: parseFloat(input.price),
+        });
         return { id: service._id.toString() };
       }),
-    
-    update: adminProcedure
+
+    update: protectedProcedure
       .input(z.object({
         id: z.string(),
         name: z.string().optional(),
         description: z.string().optional(),
         price: z.string().optional(),
-        category: z.enum(["sound", "effects", "decoration", "other"]).optional(),
+        category: z.enum(['sound', 'effects', 'decoration', 'other']).optional(),
         isActive: z.boolean().optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        await AdditionalService.findByIdAndUpdate(id, data);
+        await AdditionalService.findByIdAndUpdate(id, {
+          ...data,
+          price: data.price ? parseFloat(data.price) : undefined,
+        });
         return { success: true };
       }),
   }),
 
-  // ==================== Bookings ====================
+  // Bookings
   bookings: router({
     list: protectedProcedure.query(async () => {
-      const bookings = await Booking.find()
-        .populate("banquetHallId")
-        .sort({ eventDate: -1 });
-      
+      const bookings = await Booking.find().sort({ eventDate: -1 });
+      const halls = await BanquetHall.find();
+      const hallMap = new Map(halls.map(h => [h._id.toString(), h]));
+
       return bookings.map(b => ({
         id: b._id.toString(),
         bookingNumber: b.bookingNumber,
-        banquetHallId: b.banquetHallId?._id?.toString() || "",
-        hallName: (b.banquetHallId as any)?.name || "",
+        banquetHallId: b.banquetHallId,
+        hall: hallMap.get(b.banquetHallId) ? {
+          id: hallMap.get(b.banquetHallId)!._id.toString(),
+          name: hallMap.get(b.banquetHallId)!.name,
+        } : null,
         clientName: b.clientName,
         clientEmail: b.clientEmail,
         clientPhone: b.clientPhone,
@@ -334,42 +315,83 @@ export const appRouter = router({
         roomsRequired: b.roomsRequired,
         status: b.status,
         blockType: b.blockType,
-        hallRate: b.hallRate,
-        subtotal: b.subtotal,
-        salesTax: b.salesTax,
-        advanceTax: b.advanceTax,
-        totalAmount: b.totalAmount,
-        paidAmount: b.paidAmount,
+        blockExpiresAt: b.blockExpiresAt,
+        hallRate: b.hallRate.toString(),
+        subtotal: b.subtotal.toString(),
+        salesTax: b.salesTax.toString(),
+        advanceTax: b.advanceTax.toString(),
+        totalAmount: b.totalAmount.toString(),
+        paidAmount: b.paidAmount.toString(),
         notes: b.notes,
+        vendorDetails: b.vendorDetails,
+        createdBy: b.createdBy,
+        assignedTo: b.assignedTo,
         createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+        confirmedAt: b.confirmedAt,
       }));
     }),
-    
+
     getById: protectedProcedure
       .input(z.object({ id: z.string() }))
       .query(async ({ input }) => {
-        const booking = await Booking.findById(input.id).populate("banquetHallId");
-        
+        const booking = await Booking.findById(input.id);
         if (!booking) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found" });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Booking not found' });
         }
-        
-        const payments = await Payment.find({ bookingId: booking._id }).sort({ paymentDate: -1 });
-        const bookingMenus = await BookingMenu.find({ bookingId: booking._id }).populate("foodMenuId");
-        const bookingServices = await BookingService.find({ bookingId: booking._id }).populate("serviceId");
-        const customFoodItems = await CustomFoodItem.find({ bookingId: booking._id });
-        const customServices = await CustomService.find({ bookingId: booking._id });
-        const comments = await BookingComment.find({ bookingId: booking._id }).sort({ createdAt: -1 });
-        const activityLog = await BookingActivityLog.find({ bookingId: booking._id }).sort({ createdAt: -1 });
-        
+
+        const hall = await BanquetHall.findById(booking.banquetHallId);
+        const payments = await Payment.find({ bookingId: booking._id.toString() });
+        const bookingMenus = await BookingMenu.find({ bookingId: booking._id.toString() });
+        const bookingServices = await BookingService.find({ bookingId: booking._id.toString() });
+
+        // Get menu details
+        const menusWithDetails = await Promise.all(
+          bookingMenus.map(async (bm) => {
+            const menu = await FoodMenu.findById(bm.foodMenuId);
+            return {
+              id: bm._id.toString(),
+              bookingId: bm.bookingId,
+              foodMenuId: bm.foodMenuId,
+              numberOfPeople: bm.numberOfPeople,
+              totalPrice: bm.totalPrice.toString(),
+              isLocked: bm.isLocked,
+              menuDetails: menu ? {
+                id: menu._id.toString(),
+                name: menu.name,
+                pricePerPerson: menu.pricePerPerson.toString(),
+              } : null,
+            };
+          })
+        );
+
+        // Get service details
+        const servicesWithDetails = await Promise.all(
+          bookingServices.map(async (bs) => {
+            const service = await AdditionalService.findById(bs.serviceId);
+            return {
+              id: bs._id.toString(),
+              bookingId: bs.bookingId,
+              serviceId: bs.serviceId,
+              quantity: bs.quantity,
+              totalPrice: bs.totalPrice.toString(),
+              serviceDetails: service ? {
+                id: service._id.toString(),
+                name: service.name,
+                price: service.price.toString(),
+              } : null,
+            };
+          })
+        );
+
         return {
           id: booking._id.toString(),
           bookingNumber: booking.bookingNumber,
-          banquetHallId: booking.banquetHallId?._id?.toString() || "",
-          hall: booking.banquetHallId ? {
-            id: (booking.banquetHallId as any)._id.toString(),
-            name: (booking.banquetHallId as any).name,
-            capacity: (booking.banquetHallId as any).capacity,
+          banquetHallId: booking.banquetHallId,
+          hall: hall ? {
+            id: hall._id.toString(),
+            name: hall.name,
+            capacity: hall.capacity,
           } : null,
           clientName: booking.clientName,
           clientEmail: booking.clientEmail,
@@ -386,124 +408,37 @@ export const appRouter = router({
           status: booking.status,
           blockType: booking.blockType,
           blockExpiresAt: booking.blockExpiresAt,
-          hallRate: booking.hallRate,
-          subtotal: booking.subtotal,
-          salesTax: booking.salesTax,
-          advanceTax: booking.advanceTax,
-          totalAmount: booking.totalAmount,
-          paidAmount: booking.paidAmount,
+          hallRate: booking.hallRate.toString(),
+          subtotal: booking.subtotal.toString(),
+          salesTax: booking.salesTax.toString(),
+          advanceTax: booking.advanceTax.toString(),
+          totalAmount: booking.totalAmount.toString(),
+          paidAmount: booking.paidAmount.toString(),
           notes: booking.notes,
           vendorDetails: booking.vendorDetails,
-          confirmedAt: booking.confirmedAt,
+          createdBy: booking.createdBy,
+          assignedTo: booking.assignedTo,
           createdAt: booking.createdAt,
+          updatedAt: booking.updatedAt,
+          confirmedAt: booking.confirmedAt,
           payments: payments.map(p => ({
             id: p._id.toString(),
-            amount: p.amount,
+            bookingId: p.bookingId,
+            amount: p.amount.toString(),
             paymentType: p.paymentType,
             paymentStage: p.paymentStage,
             paymentMethod: p.paymentMethod,
             paymentDate: p.paymentDate,
             notes: p.notes,
+            recordedBy: p.recordedBy,
+            createdAt: p.createdAt,
           })),
-          menus: bookingMenus.map(bm => ({
-            id: bm._id.toString(),
-            menuDetails: bm.foodMenuId ? {
-              id: (bm.foodMenuId as any)._id.toString(),
-              name: (bm.foodMenuId as any).name,
-              pricePerPerson: (bm.foodMenuId as any).pricePerPerson,
-            } : null,
-            numberOfPeople: bm.numberOfPeople,
-            totalPrice: bm.totalPrice,
-            isLocked: bm.isLocked,
-          })),
-          services: bookingServices.map(bs => ({
-            id: bs._id.toString(),
-            serviceDetails: bs.serviceId ? {
-              id: (bs.serviceId as any)._id.toString(),
-              name: (bs.serviceId as any).name,
-              price: (bs.serviceId as any).price,
-            } : null,
-            quantity: bs.quantity,
-            totalPrice: bs.totalPrice,
-          })),
-          customFoodItems: customFoodItems.map(cf => ({
-            id: cf._id.toString(),
-            itemName: cf.itemName,
-            quantity: cf.quantity,
-            pricePerUnit: cf.pricePerUnit,
-            totalPrice: cf.totalPrice,
-          })),
-          customServices: customServices.map(cs => ({
-            id: cs._id.toString(),
-            serviceName: cs.serviceName,
-            description: cs.description,
-            price: cs.price,
-          })),
-          comments: comments.map(c => ({
-            id: c._id.toString(),
-            department: c.department,
-            comment: c.comment,
-            createdAt: c.createdAt,
-          })),
-          activityLog: activityLog.map(a => ({
-            id: a._id.toString(),
-            action: a.action,
-            description: a.description,
-            oldValue: a.oldValue,
-            newValue: a.newValue,
-            createdAt: a.createdAt,
-          })),
+          menus: menusWithDetails,
+          services: servicesWithDetails,
+          reminders: [],
         };
       }),
-    
-    getByStatus: protectedProcedure
-      .input(z.object({ status: z.string() }))
-      .query(async ({ input }) => {
-        const bookings = await Booking.find({ status: input.status })
-          .populate("banquetHallId")
-          .sort({ eventDate: -1 });
-        
-        return bookings.map(b => ({
-          id: b._id.toString(),
-          bookingNumber: b.bookingNumber,
-          hallName: (b.banquetHallId as any)?.name || "",
-          clientName: b.clientName,
-          eventDate: b.eventDate,
-          numberOfGuests: b.numberOfGuests,
-          status: b.status,
-          totalAmount: b.totalAmount,
-          paidAmount: b.paidAmount,
-        }));
-      }),
-    
-    getByDateRange: protectedProcedure
-      .input(z.object({
-        startDate: z.date(),
-        endDate: z.date(),
-      }))
-      .query(async ({ input }) => {
-        const bookings = await Booking.find({
-          eventDate: { $gte: input.startDate, $lte: input.endDate },
-          status: { $ne: "cancelled" },
-        })
-          .populate("banquetHallId")
-          .sort({ eventDate: 1 });
-        
-        return bookings.map(b => ({
-          id: b._id.toString(),
-          bookingNumber: b.bookingNumber,
-          banquetHallId: b.banquetHallId?._id?.toString() || "",
-          hallName: (b.banquetHallId as any)?.name || "",
-          clientName: b.clientName,
-          eventDate: b.eventDate,
-          eventTime: b.eventTime,
-          eventType: b.eventType,
-          numberOfGuests: b.numberOfGuests,
-          status: b.status,
-          totalAmount: b.totalAmount,
-        }));
-      }),
-    
+
     checkAvailability: protectedProcedure
       .input(z.object({
         hallId: z.string(),
@@ -514,13 +449,13 @@ export const appRouter = router({
         startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(input.eventDate);
         endOfDay.setHours(23, 59, 59, 999);
-        
+
         const existingBookings = await Booking.find({
           banquetHallId: input.hallId,
           eventDate: { $gte: startOfDay, $lte: endOfDay },
-          status: { $ne: "cancelled" },
+          status: { $nin: ['cancelled'] },
         });
-        
+
         return {
           available: existingBookings.length === 0,
           existingBookings: existingBookings.map(b => ({
@@ -531,340 +466,275 @@ export const appRouter = router({
           })),
         };
       }),
-    
+
     createSoftReservation: protectedProcedure
       .input(z.object({
         banquetHallId: z.string(),
         clientName: z.string(),
         clientEmail: z.string().optional(),
         clientPhone: z.string(),
-        clientCnic: z.string().optional(),
-        clientNtn: z.string().optional(),
-        isTaxFiler: z.boolean().default(true),
         eventDate: z.date(),
-        eventTime: z.string().optional(),
         eventType: z.string().optional(),
         numberOfGuests: z.number(),
-        expectedGuests: z.number().optional(),
-        roomsRequired: z.number().default(0),
         hallRate: z.string(),
-        subtotal: z.string(),
-        salesTax: z.string().default("0.00"),
-        advanceTax: z.string().default("0.00"),
         totalAmount: z.string(),
         notes: z.string().optional(),
-        vendorDetails: z.string().optional(),
-        menuIds: z.array(z.string()).optional(),
-        serviceIds: z.array(z.string()).optional(),
-        customFoodItems: z.array(z.object({
-          itemName: z.string(),
-          quantity: z.number(),
-          price: z.string(),
-        })).optional(),
-        customServices: z.array(z.object({
-          serviceName: z.string(),
-          description: z.string().optional(),
-          price: z.string(),
-        })).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
+          throw new TRPCError({ code: 'UNAUTHORIZED' });
         }
-        
-        const bookingNumber = `BK-${nanoid(10)}`;
-        
+
+        const bookingNumber = generateBookingNumber();
         const booking = await Booking.create({
           bookingNumber,
           banquetHallId: input.banquetHallId,
           clientName: input.clientName,
           clientEmail: input.clientEmail,
           clientPhone: input.clientPhone,
-          clientCnic: input.clientCnic,
-          clientNtn: input.clientNtn,
-          isTaxFiler: input.isTaxFiler,
           eventDate: input.eventDate,
-          eventTime: input.eventTime,
           eventType: input.eventType,
           numberOfGuests: input.numberOfGuests,
-          expectedGuests: input.expectedGuests,
-          roomsRequired: input.roomsRequired,
-          status: "soft_reservation",
-          hallRate: input.hallRate,
-          subtotal: input.subtotal,
-          salesTax: input.salesTax,
-          advanceTax: input.advanceTax,
-          totalAmount: input.totalAmount,
-          paidAmount: "0.00",
+          status: 'soft_reservation',
+          hallRate: parseFloat(input.hallRate),
+          subtotal: parseFloat(input.totalAmount),
+          totalAmount: parseFloat(input.totalAmount),
+          paidAmount: 0,
           notes: input.notes,
-          vendorDetails: input.vendorDetails,
-          createdBy: ctx.user.staffId,
+          createdBy: ctx.user.id,
         });
-        
-        // Add menus
-        if (input.menuIds && input.menuIds.length > 0) {
-          for (const menuId of input.menuIds) {
-            const menu = await FoodMenu.findById(menuId);
-            if (menu) {
-              const totalPrice = (parseFloat(menu.pricePerPerson) * input.numberOfGuests).toFixed(2);
-              await BookingMenu.create({
-                bookingId: booking._id,
-                foodMenuId: menuId,
-                numberOfPeople: input.numberOfGuests,
-                totalPrice,
-              });
-            }
-          }
-        }
-        
-        // Add services
-        if (input.serviceIds && input.serviceIds.length > 0) {
-          for (const serviceId of input.serviceIds) {
-            const service = await AdditionalService.findById(serviceId);
-            if (service) {
-              await BookingService.create({
-                bookingId: booking._id,
-                serviceId,
-                quantity: 1,
-                totalPrice: service.price,
-              });
-            }
-          }
-        }
-        
-        // Add custom food items
-        if (input.customFoodItems && input.customFoodItems.length > 0) {
-          for (const item of input.customFoodItems) {
-            await CustomFoodItem.create({
-              bookingId: booking._id,
-              itemName: item.itemName,
-              quantity: item.quantity,
-              pricePerUnit: item.price,
-              totalPrice: (parseFloat(item.price) * item.quantity).toFixed(2),
-              createdBy: ctx.user.staffId,
-            });
-          }
-        }
-        
-        // Add custom services
-        if (input.customServices && input.customServices.length > 0) {
-          for (const service of input.customServices) {
-            await CustomService.create({
-              bookingId: booking._id,
-              serviceName: service.serviceName,
-              description: service.description,
-              price: service.price,
-              createdBy: ctx.user.staffId,
-            });
-          }
-        }
-        
-        // Log activity
-        await BookingActivityLog.create({
-          bookingId: booking._id,
-          userId: ctx.user.staffId,
-          action: "created",
-          description: `Soft reservation created by ${ctx.user.name}`,
-        });
-        
-        return {
-          id: booking._id.toString(),
-          bookingNumber: booking.bookingNumber,
-        };
+
+        return { id: booking._id.toString(), bookingNumber };
       }),
-    
-    confirm: protectedProcedure
+
+    confirmBooking: protectedProcedure
       .input(z.object({
         id: z.string(),
-        tokenAmount: z.string(),
-        paymentMethod: z.string().optional(),
-        clientCnic: z.string().optional(),
+        clientCnic: z.string(),
         clientNtn: z.string().optional(),
+        isTaxFiler: z.boolean(),
+        tokenAmount: z.string(),
+        paymentMethod: z.string(),
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
+          throw new TRPCError({ code: 'UNAUTHORIZED' });
         }
-        
+
         const booking = await Booking.findById(input.id);
-        
         if (!booking) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found" });
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Booking not found' });
         }
-        
-        if (booking.status !== "soft_reservation" && booking.status !== "tentative_block") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Only soft reservations or tentative blocks can be confirmed",
-          });
-        }
-        
+
+        // Calculate taxes
+        const subtotal = booking.subtotal;
+        const salesTax = subtotal * 0.10; // 10% sales tax
+        const advanceTax = subtotal * (input.isTaxFiler ? 0.10 : 0.20); // 10% filer, 20% non-filer
+        const totalAmount = subtotal + salesTax + advanceTax;
+
         // Update booking
-        booking.status = "confirmed";
+        booking.status = 'confirmed';
+        booking.clientCnic = input.clientCnic;
+        booking.clientNtn = input.clientNtn;
+        booking.isTaxFiler = input.isTaxFiler;
+        booking.salesTax = salesTax;
+        booking.advanceTax = advanceTax;
+        booking.totalAmount = totalAmount;
+        booking.paidAmount = parseFloat(input.tokenAmount);
         booking.confirmedAt = new Date();
-        booking.paidAmount = input.tokenAmount;
-        
-        if (input.clientCnic) booking.clientCnic = input.clientCnic;
-        if (input.clientNtn) booking.clientNtn = input.clientNtn;
-        
         await booking.save();
-        
-        // Record payment
+
+        // Create payment record
         await Payment.create({
-          bookingId: booking._id,
-          amount: input.tokenAmount,
-          paymentType: "token",
+          bookingId: booking._id.toString(),
+          amount: parseFloat(input.tokenAmount),
+          paymentType: 'token',
           paymentStage: 1,
           paymentMethod: input.paymentMethod,
           paymentDate: new Date(),
-          recordedBy: ctx.user.staffId,
+          recordedBy: ctx.user.id,
         });
-        
-        // Log activity
-        await BookingActivityLog.create({
-          bookingId: booking._id,
-          userId: ctx.user.staffId,
-          action: "confirmed",
-          description: `Booking confirmed with token payment of PKR ${input.tokenAmount} by ${ctx.user.name}`,
-        });
-        
+
         return { success: true };
       }),
-    
-    addPayment: protectedProcedure
-      .input(z.object({
-        bookingId: z.string(),
-        amount: z.string(),
-        paymentType: z.enum(["token", "partial", "final", "second_payment", "final_payment"]),
-        paymentStage: z.number().optional(),
-        paymentMethod: z.string().optional(),
-        notes: z.string().optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
-        }
-        
-        const booking = await Booking.findById(input.bookingId);
-        
-        if (!booking) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found" });
-        }
-        
-        // Create payment
-        await Payment.create({
-          bookingId: booking._id,
-          amount: input.amount,
-          paymentType: input.paymentType,
-          paymentStage: input.paymentStage,
-          paymentMethod: input.paymentMethod,
-          paymentDate: new Date(),
-          notes: input.notes,
-          recordedBy: ctx.user.staffId,
-        });
-        
-        // Update booking paid amount
-        const newPaidAmount = (parseFloat(booking.paidAmount) + parseFloat(input.amount)).toFixed(2);
-        booking.paidAmount = newPaidAmount;
-        
-        // Check if fully paid
-        if (parseFloat(newPaidAmount) >= parseFloat(booking.totalAmount)) {
-          booking.status = "completed";
-        }
-        
-        await booking.save();
-        
-        // Log activity
-        await BookingActivityLog.create({
-          bookingId: booking._id,
-          userId: ctx.user.staffId,
-          action: "payment_added",
-          description: `Payment of PKR ${input.amount} (${input.paymentType}) recorded by ${ctx.user.name}`,
-        });
-        
-        return { success: true };
-      }),
-    
+
     update: protectedProcedure
       .input(z.object({
         id: z.string(),
         clientName: z.string().optional(),
         clientEmail: z.string().optional(),
         clientPhone: z.string().optional(),
-        clientCnic: z.string().optional(),
-        clientNtn: z.string().optional(),
-        isTaxFiler: z.boolean().optional(),
         eventDate: z.date().optional(),
-        eventTime: z.string().optional(),
         eventType: z.string().optional(),
         numberOfGuests: z.number().optional(),
-        expectedGuests: z.number().optional(),
-        roomsRequired: z.number().optional(),
-        hallRate: z.string().optional(),
-        subtotal: z.string().optional(),
-        salesTax: z.string().optional(),
-        advanceTax: z.string().optional(),
-        totalAmount: z.string().optional(),
         notes: z.string().optional(),
-        vendorDetails: z.string().optional(),
-        status: z.enum(["tentative_block", "soft_reservation", "confirmed", "completed", "cancelled"]).optional(),
+        status: z.enum(['tentative_block', 'soft_reservation', 'confirmed', 'completed', 'cancelled']).optional(),
       }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
-        }
-        
+      .mutation(async ({ input }) => {
         const { id, ...data } = input;
-        const booking = await Booking.findByIdAndUpdate(id, data, { new: true });
-        
-        if (!booking) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found" });
-        }
-        
-        // Log activity
-        await BookingActivityLog.create({
-          bookingId: booking._id,
-          userId: ctx.user.staffId,
-          action: "updated",
-          description: `Booking updated by ${ctx.user.name}`,
-        });
-        
+        await Booking.findByIdAndUpdate(id, data);
         return { success: true };
       }),
-    
+
     cancel: protectedProcedure
-      .input(z.object({
-        id: z.string(),
-        reason: z.string().optional(),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
-        }
-        
-        const booking = await Booking.findById(input.id);
-        
-        if (!booking) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Booking not found" });
-        }
-        
-        booking.status = "cancelled";
-        await booking.save();
-        
-        // Log activity
-        await BookingActivityLog.create({
-          bookingId: booking._id,
-          userId: ctx.user.staffId,
-          action: "cancelled",
-          description: `Booking cancelled by ${ctx.user.name}${input.reason ? `: ${input.reason}` : ""}`,
-        });
-        
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input }) => {
+        await Booking.findByIdAndUpdate(input.id, { status: 'cancelled' });
         return { success: true };
       }),
   }),
 
-  // ==================== Comments ====================
+  // Payments
+  payments: router({
+    add: protectedProcedure
+      .input(z.object({
+        bookingId: z.string(),
+        amount: z.string(),
+        paymentType: z.enum(['token', 'partial', 'final', 'second_payment', 'final_payment']),
+        paymentStage: z.number().optional(),
+        paymentMethod: z.string(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED' });
+        }
+
+        const payment = await Payment.create({
+          bookingId: input.bookingId,
+          amount: parseFloat(input.amount),
+          paymentType: input.paymentType,
+          paymentStage: input.paymentStage,
+          paymentMethod: input.paymentMethod,
+          paymentDate: new Date(),
+          notes: input.notes,
+          recordedBy: ctx.user.id,
+        });
+
+        // Update booking paid amount
+        const booking = await Booking.findById(input.bookingId);
+        if (booking) {
+          booking.paidAmount = booking.paidAmount + parseFloat(input.amount);
+          await booking.save();
+        }
+
+        return { id: payment._id.toString() };
+      }),
+
+    getByBookingId: protectedProcedure
+      .input(z.object({ bookingId: z.string() }))
+      .query(async ({ input }) => {
+        const payments = await Payment.find({ bookingId: input.bookingId });
+        return payments.map(p => ({
+          id: p._id.toString(),
+          bookingId: p.bookingId,
+          amount: p.amount.toString(),
+          paymentType: p.paymentType,
+          paymentStage: p.paymentStage,
+          paymentMethod: p.paymentMethod,
+          paymentDate: p.paymentDate,
+          notes: p.notes,
+          recordedBy: p.recordedBy,
+          createdAt: p.createdAt,
+        }));
+      }),
+  }),
+
+  // Date Notes
+  dateNotes: router({
+    list: protectedProcedure.query(async () => {
+      const notes = await DateNote.find();
+      return notes.map(n => ({
+        id: n._id.toString(),
+        date: n.date,
+        note: n.note,
+        isPrivate: n.isPrivate,
+        createdBy: n.createdBy,
+        createdAt: n.createdAt,
+        updatedAt: n.updatedAt,
+      }));
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        date: z.date(),
+        note: z.string(),
+        isPrivate: z.boolean().optional(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (!ctx.user) {
+          throw new TRPCError({ code: 'UNAUTHORIZED' });
+        }
+
+        const note = await DateNote.create({
+          ...input,
+          createdBy: ctx.user.id,
+        });
+        return { id: note._id.toString() };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input }) => {
+        await DateNote.findByIdAndDelete(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // Notifications
+  notifications: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED' });
+      }
+
+      const notifications = await Notification.find({ userId: ctx.user.id }).sort({ createdAt: -1 });
+      return notifications.map(n => ({
+        id: n._id.toString(),
+        userId: n.userId,
+        type: n.type,
+        title: n.title,
+        message: n.message,
+        bookingId: n.bookingId,
+        isRead: n.isRead,
+        createdAt: n.createdAt,
+      }));
+    }),
+
+    markAsRead: protectedProcedure
+      .input(z.object({ id: z.string() }))
+      .mutation(async ({ input }) => {
+        await Notification.findByIdAndUpdate(input.id, { isRead: true });
+        return { success: true };
+      }),
+
+    markAllAsRead: protectedProcedure.mutation(async ({ ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED' });
+      }
+
+      await Notification.updateMany({ userId: ctx.user.id }, { isRead: true });
+      return { success: true };
+    }),
+  }),
+
+  // Comments
   comments: router({
+    getByBookingId: protectedProcedure
+      .input(z.object({ bookingId: z.string() }))
+      .query(async ({ input }) => {
+        const comments = await BookingComment.find({ bookingId: input.bookingId }).sort({ createdAt: -1 });
+        return comments.map(c => ({
+          id: c._id.toString(),
+          bookingId: c.bookingId,
+          userId: c.userId,
+          department: c.department,
+          comment: c.comment,
+          createdAt: c.createdAt,
+          updatedAt: c.updatedAt,
+        }));
+      }),
+
     add: protectedProcedure
       .input(z.object({
         bookingId: z.string(),
@@ -872,232 +742,17 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
+          throw new TRPCError({ code: 'UNAUTHORIZED' });
         }
-        
+
         const comment = await BookingComment.create({
           bookingId: input.bookingId,
-          userId: ctx.user.staffId,
+          userId: ctx.user.id,
           department: ctx.user.department as any,
           comment: input.comment,
         });
-        
         return { id: comment._id.toString() };
       }),
-    
-    getByBooking: protectedProcedure
-      .input(z.object({ bookingId: z.string() }))
-      .query(async ({ input }) => {
-        const comments = await BookingComment.find({ bookingId: input.bookingId })
-          .populate("userId")
-          .sort({ createdAt: -1 });
-        
-        return comments.map(c => ({
-          id: c._id.toString(),
-          department: c.department,
-          comment: c.comment,
-          userName: (c.userId as any)?.name || "Unknown",
-          createdAt: c.createdAt,
-        }));
-      }),
-  }),
-
-  // ==================== Date Notes ====================
-  dateNotes: router({
-    getByDateRange: protectedProcedure
-      .input(z.object({
-        startDate: z.date(),
-        endDate: z.date(),
-      }))
-      .query(async ({ input, ctx }) => {
-        const notes = await DateNote.find({
-          date: { $gte: input.startDate, $lte: input.endDate },
-          $or: [
-            { isPrivate: false },
-            { createdBy: ctx.user?.staffId },
-          ],
-        }).sort({ date: 1 });
-        
-        return notes.map(n => ({
-          id: n._id.toString(),
-          date: n.date,
-          note: n.note,
-          isPrivate: n.isPrivate,
-          createdBy: n.createdBy.toString(),
-        }));
-      }),
-    
-    create: protectedProcedure
-      .input(z.object({
-        date: z.date(),
-        note: z.string(),
-        isPrivate: z.boolean().default(false),
-      }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
-        }
-        
-        const note = await DateNote.create({
-          date: input.date,
-          note: input.note,
-          isPrivate: input.isPrivate,
-          createdBy: ctx.user.staffId,
-        });
-        
-        return { id: note._id.toString() };
-      }),
-    
-    delete: protectedProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input, ctx }) => {
-        if (!ctx.user) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
-        }
-        
-        const note = await DateNote.findById(input.id);
-        
-        if (!note) {
-          throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
-        }
-        
-        // Only creator or admin can delete
-        if (note.createdBy.toString() !== ctx.user.staffId && ctx.user.accessLevel !== "full") {
-          throw new TRPCError({ code: "FORBIDDEN", message: "You can only delete your own notes" });
-        }
-        
-        await DateNote.findByIdAndDelete(input.id);
-        
-        return { success: true };
-      }),
-  }),
-
-  // ==================== Notifications ====================
-  notifications: router({
-    list: protectedProcedure.query(async ({ ctx }) => {
-      if (!ctx.user) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
-      
-      const notifications = await Notification.find({ userId: ctx.user.staffId })
-        .sort({ createdAt: -1 })
-        .limit(50);
-      
-      return notifications.map(n => ({
-        id: n._id.toString(),
-        type: n.type,
-        title: n.title,
-        message: n.message,
-        bookingId: n.bookingId?.toString(),
-        isRead: n.isRead,
-        createdAt: n.createdAt,
-      }));
-    }),
-    
-    unreadCount: protectedProcedure.query(async ({ ctx }) => {
-      if (!ctx.user) return 0;
-      
-      const count = await Notification.countDocuments({
-        userId: ctx.user.staffId,
-        isRead: false,
-      });
-      
-      return count;
-    }),
-    
-    markAsRead: protectedProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
-        await Notification.findByIdAndUpdate(input.id, { isRead: true });
-        return { success: true };
-      }),
-    
-    markAllAsRead: protectedProcedure.mutation(async ({ ctx }) => {
-      if (!ctx.user) {
-        throw new TRPCError({ code: "UNAUTHORIZED" });
-      }
-      
-      await Notification.updateMany(
-        { userId: ctx.user.staffId, isRead: false },
-        { isRead: true }
-      );
-      
-      return { success: true };
-    }),
-  }),
-
-  // ==================== Dashboard Stats ====================
-  dashboard: router({
-    stats: protectedProcedure.query(async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      
-      const totalBookings = await Booking.countDocuments();
-      const softReservations = await Booking.countDocuments({ status: "soft_reservation" });
-      const confirmedBookings = await Booking.countDocuments({ status: "confirmed" });
-      const todayEvents = await Booking.countDocuments({
-        eventDate: { $gte: today, $lt: tomorrow },
-        status: { $in: ["confirmed", "completed"] },
-      });
-      
-      // Calculate total revenue
-      const allBookings = await Booking.find({ status: { $in: ["confirmed", "completed"] } });
-      const totalRevenue = allBookings.reduce((sum, b) => sum + parseFloat(b.totalAmount), 0);
-      const totalPaid = allBookings.reduce((sum, b) => sum + parseFloat(b.paidAmount), 0);
-      
-      return {
-        totalBookings,
-        softReservations,
-        confirmedBookings,
-        todayEvents,
-        totalRevenue: totalRevenue.toFixed(2),
-        totalPaid: totalPaid.toFixed(2),
-        pendingPayments: (totalRevenue - totalPaid).toFixed(2),
-      };
-    }),
-    
-    recentBookings: protectedProcedure.query(async () => {
-      const bookings = await Booking.find()
-        .populate("banquetHallId")
-        .sort({ createdAt: -1 })
-        .limit(10);
-      
-      return bookings.map(b => ({
-        id: b._id.toString(),
-        bookingNumber: b.bookingNumber,
-        clientName: b.clientName,
-        hallName: (b.banquetHallId as any)?.name || "",
-        eventDate: b.eventDate,
-        status: b.status,
-        totalAmount: b.totalAmount,
-      }));
-    }),
-    
-    upcomingEvents: protectedProcedure.query(async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const bookings = await Booking.find({
-        eventDate: { $gte: today },
-        status: { $in: ["confirmed", "soft_reservation"] },
-      })
-        .populate("banquetHallId")
-        .sort({ eventDate: 1 })
-        .limit(10);
-      
-      return bookings.map(b => ({
-        id: b._id.toString(),
-        bookingNumber: b.bookingNumber,
-        clientName: b.clientName,
-        hallName: (b.banquetHallId as any)?.name || "",
-        eventDate: b.eventDate,
-        eventType: b.eventType,
-        numberOfGuests: b.numberOfGuests,
-        status: b.status,
-      }));
-    }),
   }),
 });
 

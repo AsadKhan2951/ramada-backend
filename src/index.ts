@@ -1,62 +1,42 @@
-import express from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { connectDB } from "./db/connection.js";
-import { appRouter } from "./trpc/routers.js";
-import { createContext } from "./trpc/context.js";
-
-// Load environment variables
-dotenv.config();
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import { createExpressMiddleware } from '@trpc/server/adapters/express';
+import { connectDB } from './db/connection';
+import { appRouter } from './trpc/routers';
+import { createContext } from './trpc/context';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-
-// CORS configuration
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
+const PORT = process.env.PORT || 4000;
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 // Middleware
-app.use(cors(corsOptions));
-app.use(express.json());
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true,
+}));
 app.use(cookieParser());
+app.use(express.json());
 
-// Health check endpoint
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// tRPC endpoint
-app.use(
-  "/api/trpc",
-  createExpressMiddleware({
-    router: appRouter,
-    createContext,
-    onError: ({ error, path }) => {
-      console.error(`[tRPC Error] ${path}:`, error.message);
-    },
-  })
-);
+// tRPC
+app.use('/api/trpc', createExpressMiddleware({
+  router: appRouter,
+  createContext,
+}));
 
 // Start server
 async function start() {
-  try {
-    // Connect to MongoDB
-    await connectDB();
-    
-    app.listen(PORT, () => {
-      console.log(`[Server] Running on http://localhost:${PORT}`);
-      console.log(`[Server] tRPC endpoint: http://localhost:${PORT}/api/trpc`);
-    });
-  } catch (error) {
-    console.error("[Server] Failed to start:", error);
-    process.exit(1);
-  }
+  await connectDB();
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`tRPC endpoint: http://localhost:${PORT}/api/trpc`);
+  });
 }
 
-start();
+start().catch(console.error);

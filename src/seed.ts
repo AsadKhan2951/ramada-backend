@@ -1,180 +1,114 @@
-import dotenv from "dotenv";
-import { connectDB, disconnectDB } from "./db/connection.js";
-import { hashPassword } from "./auth/jwt.js";
-import {
-  StaffMember,
-  BanquetHall,
-  FoodMenu,
-  AdditionalService,
-} from "./db/models.js";
-
-dotenv.config();
+import 'dotenv/config';
+import { connectDB } from './db/connection';
+import { StaffMember, BanquetHall, FoodMenu, AdditionalService } from './db/models';
+import { hashPassword } from './auth/jwt';
 
 async function seed() {
-  try {
-    console.log("[Seed] Connecting to database...");
-    await connectDB();
-    
-    // Clear existing data
-    console.log("[Seed] Clearing existing data...");
-    await StaffMember.deleteMany({});
-    await BanquetHall.deleteMany({});
-    await FoodMenu.deleteMany({});
-    await AdditionalService.deleteMany({});
-    
-    // Hash the default password
-    const hashedPassword = await hashPassword("123");
-    
-    // Create staff members
-    console.log("[Seed] Creating staff members...");
-    const staffMembers = [
-      {
-        name: "Nazim Zaidi",
-        email: "nazim.zaidi@ramadaplaza.com",
-        password: hashedPassword,
-        jobTitle: "Director F&B",
-        department: "food" as const,
-        accessLevel: "full" as const,
-      },
-      {
-        name: "Areez Masood",
-        email: "areez.masood@ramadaplaza.com",
-        password: hashedPassword,
-        jobTitle: "Asst. Sales & Operations Manager",
-        department: "sales" as const,
-        accessLevel: "full" as const,
-      },
-      {
-        name: "Asim Farrukh",
-        email: "asim.farrukh@ramadaplaza.com",
-        password: hashedPassword,
-        jobTitle: "Asst. Sales Manager",
-        department: "sales" as const,
-        accessLevel: "full" as const,
-      },
-      {
-        name: "Ashi Moin",
-        email: "ashi.moin@ramadaplaza.com",
-        password: hashedPassword,
-        jobTitle: "Banquet Sales Executive",
-        department: "sales" as const,
-        accessLevel: "limited" as const,
-      },
-      {
-        name: "Sonia Saeed",
-        email: "sonia.saeed@ramadaplaza.com",
-        password: hashedPassword,
-        jobTitle: "Banquet Sales Executive",
-        department: "sales" as const,
-        accessLevel: "limited" as const,
-      },
-    ];
-    
-    await StaffMember.insertMany(staffMembers);
-    console.log(`[Seed] Created ${staffMembers.length} staff members`);
-    
-    // Create banquet halls
-    console.log("[Seed] Creating banquet halls...");
-    const banquetHalls = [
-      { name: "Marquee", capacity: 2000, baseRate: "500000", facilities: JSON.stringify(["Stage", "Sound System", "AC", "Parking"]) },
-      { name: "Eiffel 1", capacity: 1000, baseRate: "300000", facilities: JSON.stringify(["Stage", "Sound System", "AC"]) },
-      { name: "Eiffel 2", capacity: 1000, baseRate: "300000", facilities: JSON.stringify(["Stage", "Sound System", "AC"]) },
-      { name: "Dilshad Hall", capacity: 300, baseRate: "150000", facilities: JSON.stringify(["Sound System", "AC"]) },
-      { name: "Noor Hall", capacity: 300, baseRate: "150000", facilities: JSON.stringify(["Sound System", "AC"]) },
-      { name: "Qasr-e-Gul", capacity: 200, baseRate: "100000", facilities: JSON.stringify(["Sound System", "AC"]) },
-      { name: "Qasr-e-Noor", capacity: 200, baseRate: "100000", facilities: JSON.stringify(["Sound System", "AC"]) },
-      { name: "Lawn", capacity: 1500, baseRate: "400000", facilities: JSON.stringify(["Open Air", "Lighting", "Parking"]) },
-      { name: "Pool Side", capacity: 500, baseRate: "200000", facilities: JSON.stringify(["Pool View", "Lighting"]) },
-      { name: "Rooftop", capacity: 400, baseRate: "180000", facilities: JSON.stringify(["City View", "Lighting", "AC"]) },
-    ];
-    
-    await BanquetHall.insertMany(banquetHalls);
-    console.log(`[Seed] Created ${banquetHalls.length} banquet halls`);
-    
-    // Create food menus
-    console.log("[Seed] Creating food menus...");
-    const foodMenus = [
-      {
-        name: "Silver Package",
-        description: "Basic menu package for budget-conscious events",
-        pricePerPerson: "2500",
-        menuItems: JSON.stringify([
-          "Welcome Drink",
-          "2 Starters",
-          "Main Course (3 items)",
-          "Rice",
-          "Naan",
-          "Dessert",
-          "Tea/Coffee"
-        ]),
-      },
-      {
-        name: "Gold Package",
-        description: "Premium menu package for standard events",
-        pricePerPerson: "3500",
-        menuItems: JSON.stringify([
-          "Welcome Drink",
-          "3 Starters",
-          "Soup",
-          "Main Course (5 items)",
-          "Rice (2 varieties)",
-          "Naan",
-          "2 Desserts",
-          "Tea/Coffee",
-          "Soft Drinks"
-        ]),
-      },
-      {
-        name: "Platinum Package",
-        description: "Luxury menu package for premium events",
-        pricePerPerson: "5000",
-        menuItems: JSON.stringify([
-          "Welcome Drink",
-          "Live Cooking Station",
-          "4 Starters",
-          "Soup",
-          "Salad Bar",
-          "Main Course (7 items)",
-          "Rice (3 varieties)",
-          "Naan & Breads",
-          "3 Desserts",
-          "Ice Cream Station",
-          "Tea/Coffee",
-          "Soft Drinks & Juices"
-        ]),
-      },
-    ];
-    
-    await FoodMenu.insertMany(foodMenus);
-    console.log(`[Seed] Created ${foodMenus.length} food menus`);
-    
-    // Create additional services
-    console.log("[Seed] Creating additional services...");
-    const additionalServices = [
-      { name: "DJ Sound System", description: "Professional DJ with sound equipment", price: "50000", category: "sound" as const },
-      { name: "Live Band", description: "5-piece live band performance", price: "150000", category: "sound" as const },
-      { name: "Smoke Machine", description: "Stage smoke effects", price: "15000", category: "effects" as const },
-      { name: "Cold Pyro", description: "Indoor fireworks display", price: "25000", category: "effects" as const },
-      { name: "LED Dance Floor", description: "Illuminated dance floor", price: "40000", category: "effects" as const },
-      { name: "Flower Decoration", description: "Fresh flower arrangements", price: "75000", category: "decoration" as const },
-      { name: "Stage Decoration", description: "Premium stage setup", price: "100000", category: "decoration" as const },
-      { name: "Photography", description: "Professional photography coverage", price: "80000", category: "other" as const },
-      { name: "Videography", description: "Professional video coverage", price: "120000", category: "other" as const },
-      { name: "Valet Parking", description: "Valet parking service", price: "30000", category: "other" as const },
-    ];
-    
-    await AdditionalService.insertMany(additionalServices);
-    console.log(`[Seed] Created ${additionalServices.length} additional services`);
-    
-    console.log("[Seed] Database seeding completed successfully!");
-    
-  } catch (error) {
-    console.error("[Seed] Error:", error);
-    process.exit(1);
-  } finally {
-    await disconnectDB();
-    process.exit(0);
-  }
+  await connectDB();
+  console.log('Connected to MongoDB');
+
+  // Clear existing data
+  await StaffMember.deleteMany({});
+  await BanquetHall.deleteMany({});
+  await FoodMenu.deleteMany({});
+  await AdditionalService.deleteMany({});
+  console.log('Cleared existing data');
+
+  // Create staff members (password: 123)
+  const hashedPassword = await hashPassword('123');
+  const staffMembers = [
+    {
+      name: 'Nazim Zaidi',
+      email: 'nazim.zaidi@ramada.com',
+      password: hashedPassword,
+      jobTitle: 'Director F&B',
+      department: 'food',
+      accessLevel: 'full',
+    },
+    {
+      name: 'Areez Masood',
+      email: 'areez.masood@ramada.com',
+      password: hashedPassword,
+      jobTitle: 'Asst. Sales & Ops Manager',
+      department: 'sales',
+      accessLevel: 'full',
+    },
+    {
+      name: 'Asim Farrukh',
+      email: 'asim.farrukh@ramada.com',
+      password: hashedPassword,
+      jobTitle: 'Asst. Sales Manager',
+      department: 'sales',
+      accessLevel: 'full',
+    },
+    {
+      name: 'Ashi Moin',
+      email: 'ashi.moin@ramada.com',
+      password: hashedPassword,
+      jobTitle: 'Banquet Sales Executive',
+      department: 'sales',
+      accessLevel: 'limited',
+    },
+    {
+      name: 'Sonia Saeed',
+      email: 'sonia.saeed@ramada.com',
+      password: hashedPassword,
+      jobTitle: 'Banquet Sales Executive',
+      department: 'sales',
+      accessLevel: 'limited',
+    },
+  ];
+
+  await StaffMember.insertMany(staffMembers);
+  console.log('Created staff members');
+
+  // Create banquet halls
+  const halls = [
+    { name: 'Grand Ballroom', capacity: 500, baseRate: 250000, facilities: JSON.stringify(['Stage', 'Sound System', 'Projector', 'AC']) },
+    { name: 'Crystal Hall', capacity: 300, baseRate: 180000, facilities: JSON.stringify(['Stage', 'Sound System', 'AC']) },
+    { name: 'Pearl Room', capacity: 150, baseRate: 100000, facilities: JSON.stringify(['Sound System', 'AC']) },
+    { name: 'Sapphire Suite', capacity: 80, baseRate: 60000, facilities: JSON.stringify(['AC', 'Private Entrance']) },
+    { name: 'Garden Terrace', capacity: 200, baseRate: 150000, facilities: JSON.stringify(['Outdoor', 'Lighting', 'Stage']) },
+  ];
+
+  await BanquetHall.insertMany(halls);
+  console.log('Created banquet halls');
+
+  // Create food menus
+  const menus = [
+    { name: 'Premium Package', description: 'Full course meal with premium items', pricePerPerson: 3500, menuItems: JSON.stringify(['Appetizers', 'Main Course', 'Dessert', 'Beverages']) },
+    { name: 'Standard Package', description: 'Standard buffet menu', pricePerPerson: 2500, menuItems: JSON.stringify(['Appetizers', 'Main Course', 'Dessert']) },
+    { name: 'Economy Package', description: 'Basic menu options', pricePerPerson: 1800, menuItems: JSON.stringify(['Main Course', 'Dessert']) },
+    { name: 'Hi-Tea Package', description: 'Afternoon tea service', pricePerPerson: 1200, menuItems: JSON.stringify(['Sandwiches', 'Pastries', 'Tea/Coffee']) },
+  ];
+
+  await FoodMenu.insertMany(menus);
+  console.log('Created food menus');
+
+  // Create additional services
+  const services = [
+    { name: 'DJ Services', description: 'Professional DJ with equipment', price: 50000, category: 'sound' },
+    { name: 'Live Band', description: '5-piece live band', price: 80000, category: 'sound' },
+    { name: 'Fog Machine', description: 'Stage fog effects', price: 15000, category: 'effects' },
+    { name: 'Laser Lights', description: 'Professional laser light show', price: 25000, category: 'effects' },
+    { name: 'Floral Decoration', description: 'Premium flower arrangements', price: 40000, category: 'decoration' },
+    { name: 'Stage Decoration', description: 'Custom stage setup', price: 60000, category: 'decoration' },
+    { name: 'Photography', description: 'Professional photography service', price: 35000, category: 'other' },
+    { name: 'Videography', description: 'Professional video coverage', price: 45000, category: 'other' },
+  ];
+
+  await AdditionalService.insertMany(services);
+  console.log('Created additional services');
+
+  console.log('\\nSeed completed successfully!');
+  console.log('\\nStaff login credentials:');
+  console.log('Password for all staff: 123');
+  staffMembers.forEach(s => console.log(`- ${s.name}: ${s.email}`));
+
+  process.exit(0);
 }
 
-seed();
+seed().catch(err => {
+  console.error('Seed failed:', err);
+  process.exit(1);
+});
