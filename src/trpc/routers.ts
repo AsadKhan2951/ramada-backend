@@ -78,6 +78,7 @@ export const appRouter = router({
 
         return {
           success: true,
+          token,
           staff: {
             id: staff._id.toString(),
             name: staff.name,
@@ -704,6 +705,19 @@ export const appRouter = router({
         isRead: n.isRead,
         createdAt: n.createdAt,
       }));
+    }),
+
+    unreadCount: protectedProcedure.query(async ({ ctx }) => {
+      if (!ctx.user) {
+        throw new TRPCError({ code: 'UNAUTHORIZED' });
+      }
+
+      const count = await Notification.countDocuments({
+        userId: ctx.user.id,
+        isRead: false,
+      });
+
+      return { count };
     }),
 
     markAsRead: protectedProcedure
