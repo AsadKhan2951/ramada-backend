@@ -5,6 +5,13 @@ import { router, publicProcedure, protectedProcedure } from './trpc';
 import { StaffMember, BanquetHall, FoodMenu, AdditionalService, Booking, Payment, BookingMenu, BookingService, BookingComment, BookingActivityLog, DateNote, Notification, BookingVenue, CustomService, CustomFoodItem, BookingCustomMenu } from '../db/models';
 import { generateToken, comparePassword, hashPassword } from '../auth/jwt';
 
+const idAsString = z.preprocess((value) => {
+  if (typeof value === 'number') {
+    return value.toString();
+  }
+  return value;
+}, z.string());
+
 function generateBookingNumber(): string {
   const prefix = 'BK';
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -447,7 +454,7 @@ export const appRouter = router({
 
     checkAvailability: protectedProcedure
       .input(z.object({
-        hallId: z.string(),
+        hallId: idAsString,
         eventDate: z.date(),
       }))
       .query(async ({ input }) => {
@@ -475,7 +482,7 @@ export const appRouter = router({
 
     createSoftReservation: protectedProcedure
       .input(z.object({
-        banquetHallId: z.string(),
+        banquetHallId: idAsString,
         clientName: z.string(),
         clientEmail: z.string().optional(),
         clientPhone: z.string(),
