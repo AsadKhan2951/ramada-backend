@@ -62,13 +62,97 @@ async function seed() {
   await StaffMember.insertMany(staffMembers);
   console.log('Created staff members');
 
-  // Create banquet halls
+  // Create banquet halls (Ramada Plaza by Wyndham Karachi)
   const halls = [
-    { name: 'Grand Ballroom', capacity: 500, baseRate: 250000, facilities: JSON.stringify(['Stage', 'Sound System', 'Projector', 'AC']) },
-    { name: 'Crystal Hall', capacity: 300, baseRate: 180000, facilities: JSON.stringify(['Stage', 'Sound System', 'AC']) },
-    { name: 'Pearl Room', capacity: 150, baseRate: 100000, facilities: JSON.stringify(['Sound System', 'AC']) },
-    { name: 'Sapphire Suite', capacity: 80, baseRate: 60000, facilities: JSON.stringify(['AC', 'Private Entrance']) },
-    { name: 'Garden Terrace', capacity: 200, baseRate: 150000, facilities: JSON.stringify(['Outdoor', 'Lighting', 'Stage']) },
+    // Board Rooms
+    {
+      name: 'Paris I',
+      capacity: 12,
+      baseRate: 125000,
+      facilities: JSON.stringify(['Board Room', 'Meeting', 'Setup: Fixed I-Shape', 'Dimensions: 29 x 19', 'Pax: 12']),
+    },
+    {
+      name: 'Paris II',
+      capacity: 10,
+      baseRate: 125000,
+      facilities: JSON.stringify(['Board Room', 'Meeting', 'Setup: Fixed Round-Shape', 'Dimensions: 25 x 21', 'Pax: 10']),
+    },
+    {
+      name: 'Samreen',
+      capacity: 20,
+      baseRate: 125000,
+      facilities: JSON.stringify(['Board Room', 'Meeting', 'Setup: Fixed I-Shape', 'Dimensions: 35 x 18', 'Pax: 20']),
+    },
+    {
+      name: 'Mehreen',
+      capacity: 17,
+      baseRate: 125000,
+      facilities: JSON.stringify(['Board Room', 'Meeting', 'Setup: Fixed I-Shape', 'Dimensions: 44 x 15', 'Pax: 17']),
+    },
+
+    // Halls
+    {
+      name: 'Adeeba',
+      capacity: 50,
+      baseRate: 125000,
+      facilities: JSON.stringify(['Hall', 'Meeting', 'Setup: Round Table', 'Dimensions: 44 x 21', 'Pax: 45-50']),
+    },
+    {
+      name: 'Dilshad',
+      capacity: 50,
+      baseRate: 150000,
+      facilities: JSON.stringify(['Hall', 'Meeting', 'Setup: Round Table', 'Dimensions: 50 x 25', 'Pax: 45-50']),
+    },
+    {
+      name: 'Eiffel Hall',
+      capacity: 250,
+      baseRate: 400000,
+      facilities: JSON.stringify(['Hall', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 115 x 47', 'Pax: 250']),
+    },
+    {
+      name: 'Eiffel 1&2 Hall',
+      capacity: 110,
+      baseRate: 250000,
+      facilities: JSON.stringify(['Hall', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 75 x 47', 'Pax: 100-110']),
+    },
+    {
+      name: 'Banquet Lobby',
+      capacity: 110,
+      baseRate: 175000,
+      facilities: JSON.stringify(['Hall', 'Wedding/Symposium', 'Setup: Round Table', 'Pax: 90-110']),
+    },
+    {
+      name: 'Marquee Half Hall',
+      capacity: 700,
+      baseRate: 400000,
+      facilities: JSON.stringify(['Hall', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 164 x 100', 'Pax: 650-700']),
+    },
+    {
+      name: 'Marquee Full Hall',
+      capacity: 350,
+      baseRate: 800000,
+      facilities: JSON.stringify(['Hall', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 82 x 100', 'Pax: 350']),
+    },
+
+    // Garden Space
+    {
+      name: 'Poolside',
+      capacity: 350,
+      baseRate: 400000,
+      facilities: JSON.stringify(['Garden Space', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 91 x 104', 'Pax: 300-350']),
+    },
+    {
+      name: 'Shalimar Lawn "A"',
+      capacity: 500,
+      baseRate: 400000,
+      facilities: JSON.stringify(['Garden Space', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 125 x 134', 'Pax: 500']),
+    },
+    {
+      name: 'Shalimar Lawn',
+      capacity: 1200,
+      baseRate: 800000,
+      facilities: JSON.stringify(['Garden Space', 'Wedding/Symposium', 'Setup: Round Table', 'Dimensions: 250 x 134', 'Pax: 1000-1200']),
+    },
   ];
 
   await BanquetHall.insertMany(halls);
